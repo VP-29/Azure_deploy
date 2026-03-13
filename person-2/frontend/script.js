@@ -8,15 +8,15 @@ let pieChart;
 
 // --- CONFIGURATION ---
 // Replace this with your actual Azure Function URL once deployed
-const API_URL = "https://<YOUR_FUNCTION_APP_NAME>.azurewebsites.net/api/analyze_diet";
+const API_URL = "https://diet-analysis-fn7174.azurewebsites.net/api/analyze_diet";
 
 async function fetchData() {
     try {
         executionTimeText.textContent = "Loading data from Azure...";
         
-        // In a real scenario, you'd use fetch(API_URL)
-        // For development/demo without a live URL, we'll use a mock that matches your function_app.py output
-        const response = await getMockData(); 
+        // For Phase 2 it is switched to the API call
+        const response = await fetch(API_URL); 
+        const result = await response.json();
         
         const data = response.analysis.averages_by_diet;
         const execTime = response.metadata.execution_time_sec;
