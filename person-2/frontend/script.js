@@ -18,8 +18,8 @@ async function fetchData() {
         const response = await fetch(API_URL); 
         const result = await response.json();
         
-        const data = response.analysis.averages_by_diet;
-        const execTime = response.metadata.execution_time_sec;
+        const data = result.analysis.averages_by_diet;
+        const execTime = result.metadata.execution_time_sec;
 
         loadDashboard(data, execTime);
     } catch (error) {
