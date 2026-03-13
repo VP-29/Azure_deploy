@@ -1,0 +1,113 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background-color: #f4f7fb;
+  color: #222;
+}
+
+.container {
+  width: 90%;
+  max-width: 1200px;
+  margin: 30px auto;
+}
+
+header {
+  text-align: center;
+  margin-bottom: 25px;
+}
+
+header h1 {
+  margin-bottom: 8px;
+  font-size: 2rem;
+}
+
+.subtitle {
+  margin-top: 0;
+  color: #666;
+}
+
+#execution-time {
+  margin-top: 12px;
+  font-weight: bold;
+  color: #1d4ed8;
+}
+
+.controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 30px;
+  background: white;
+  padding: 16px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+button,
+select {
+  padding: 10px 14px;
+  font-size: 15px;
+  border-radius: 8px;
+}
+
+button {
+  background-color: #2563eb;
+  color: white;
+  border: none;
+  cursor: pointer;
+}
+
+button:hover {
+  background-color: #1e4fd1;
+}
+
+select {
+  border: 1px solid #ccc;
+}
+
+.charts-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+}
+
+.chart-card {
+  background: white;
+  padding: 20px;
+  border-radius: 14px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+}
+
+.chart-card h2 {
+  margin-top: 0;
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+#barChart,
+#lineChart {
+  width: 100% !important;
+  height: 320px !important;
+}
+
+#pieChart {
+  width: 100% !important;
+  height: 380px !important;
+  max-height: 380px !important;
+}
+
+@media (min-width: 900px) {
+  .charts-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .chart-card:last-child {
+    grid-column: 1 / 3;
+  }
+}

@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+env/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Ignore generated outputs
+Outputs/
+*.png
+*.txt
+*.csv
+
+# BUT allow the main dataset
+!memberA/data/All_Diets.csv
