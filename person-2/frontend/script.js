@@ -119,24 +119,5 @@ refreshBtn.addEventListener("click", () => {
     fetchData();
 });
 
-// --- MOCK DATA FOR DEMO (Matching Phase 1 Output) ---
-async function getMockData() {
-    return {
-        "metadata": {
-            "execution_time_sec": 0.842,
-            "status": "success"
-        },
-        "analysis": {
-            "averages_by_diet": {
-                "dash": { "Protein(g)": 69.2, "Carbs(g)": 160.5, "Fat(g)": 101.1 },
-                "keto": { "Protein(g)": 101.2, "Carbs(g)": 57.9, "Fat(g)": 153.1 },
-                "mediterranean": { "Protein(g)": 101.1, "Carbs(g)": 152.9, "Fat(g)": 101.4 },
-                "paleo": { "Protein(g)": 88.6, "Carbs(g)": 129.5, "Fat(g)": 135.6 },
-                "vegan": { "Protein(g)": 56.1, "Carbs(g)": 254.0, "Fat(g)": 103.2 }
-            }
-        }
-    };
-}
-
 // Initial Load
 fetchData();
