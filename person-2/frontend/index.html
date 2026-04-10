@@ -3,49 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Cloud Diet Dashboard</title>
+  <title>Cloud Dashboard</title>
   <link rel="stylesheet" href="style.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-  <div class="container">
-    <header>
-      <h1>Cloud Diet Dashboard</h1>
-      <p class="subtitle">Visual insights generated from diet analysis data</p>
-      <p id="execution-time">Function Execution Time: --</p>
-    </header>
-
-    <section class="controls">
-      <button id="refreshBtn">Refresh Data</button>
-
-      <label for="dietFilter">Filter Diet:</label>
-      <select id="dietFilter">
-        <option value="all">All Diets</option>
-        <option value="Keto">Keto</option>
-        <option value="Vegan">Vegan</option>
-        <option value="Mediterranean">Mediterranean</option>
-        <option value="Paleo">Paleo</option>
-      </select>
-    </section>
-
-    <section class="charts-grid">
-      <div class="chart-card">
-        <h2>Average Calories by Diet</h2>
-        <canvas id="barChart"></canvas>
-      </div>
-
-      <div class="chart-card">
-        <h2>Average Protein by Diet</h2>
-        <canvas id="lineChart"></canvas>
-      </div>
-
-      <div class="chart-card">
-        <h2>Diet Distribution</h2>
-        <canvas id="pieChart"></canvas>
-      </div>
-    </section>
-  </div>
-
-  <script src="script.js"></script>
+  <div id="app"></div>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script type="module" src="script.js"></script>
 </body>
 </html>
