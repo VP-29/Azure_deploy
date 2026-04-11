@@ -3,13 +3,181 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Cloud Dashboard</title>
+  <title>Nutritional Insights - Phase 3 Frontend</title>
   <link rel="stylesheet" href="style.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
-  <div id="app"></div>
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <div id="authView" class="auth-wrap">
+    <div class="auth-card">
+      <div class="auth-left">
+        <h1>Nutritional Insights</h1>
+        <p>
+          This dashboard helps users explore nutritional patterns, recipe types,
+          and diet-based insights in a simple and clean way.
+        </p>
+        <ul>
+          <li>Email and password login</li>
+          <li>Google sign-in</li>
+          <li>Search, filter, and pagination</li>
+          <li>Dashboard view after successful login</li>
+        </ul>
+      </div>
+
+      <div class="auth-right">
+        <div class="tabs">
+          <button class="tab-btn active" id="loginTab" type="button">Login</button>
+          <button class="tab-btn" id="registerTab" type="button">Register</button>
+        </div>
+
+        <div id="loginPanel" class="form-panel">
+          <h2>Welcome back</h2>
+          <p class="subtext">Sign in to access the dashboard and interact with the nutritional dataset.</p>
+
+          <div class="form-group">
+            <label for="loginEmail">Email</label>
+            <input id="loginEmail" type="email" placeholder="Enter your email" />
+          </div>
+
+          <div class="form-group">
+            <label for="loginPassword">Password</label>
+            <input id="loginPassword" type="password" placeholder="Enter your password" />
+          </div>
+
+          <button class="btn btn-blue full-btn" id="loginBtn" type="button">Login</button>
+
+          <div class="helper">Use email/password or Google sign-in.</div>
+
+          <div class="oauth-row">
+            <div id="googleSignInContainer"></div>
+          </div>
+        </div>
+
+        <div id="registerPanel" class="form-panel hidden">
+          <h2>Create an account</h2>
+          <p class="subtext">Register first, then log in to open the dashboard.</p>
+
+          <div class="row">
+            <div class="form-group">
+              <label for="registerName">Full Name</label>
+              <input id="registerName" type="text" placeholder="Enter your full name" />
+            </div>
+
+            <div class="form-group">
+              <label for="registerEmail">Email</label>
+              <input id="registerEmail" type="email" placeholder="Enter your email" />
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="form-group">
+              <label for="registerPassword">Password</label>
+              <input id="registerPassword" type="password" placeholder="Create a password" />
+            </div>
+
+            <div class="form-group">
+              <label for="registerConfirmPassword">Confirm Password</label>
+              <input id="registerConfirmPassword" type="password" placeholder="Confirm password" />
+            </div>
+          </div>
+
+          <button class="btn btn-green full-btn" id="registerBtn" type="button">Register</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="dashboardView" class="hidden">
+    <header class="topbar">
+      <div>Nutritional Insights</div>
+      <div class="topbar-right">
+        <span id="welcomeUser">Welcome, User</span>
+        <button class="btn btn-outline small-btn" id="logoutBtn" type="button">Logout</button>
+      </div>
+    </header>
+
+    <main class="container">
+      <section class="section-block">
+        <h2 class="section-title">Explore Nutritional Insights</h2>
+        <div class="main-grid">
+          <div class="card chart-card">
+            <div>
+              <div class="chart-title">Bar Chart</div>
+              <div class="chart-sub">Average calories by diet type from Azure Function.</div>
+            </div>
+            <canvas id="barChart"></canvas>
+          </div>
+
+          <div class="card chart-card">
+            <div>
+              <div class="chart-title">Scatter Plot</div>
+              <div class="chart-sub">Protein vs carbs by diet type from Azure Function.</div>
+            </div>
+            <canvas id="scatterChart"></canvas>
+          </div>
+
+          <div class="card chart-card">
+            <div>
+              <div class="chart-title">Execution Info</div>
+              <div class="chart-sub">Azure API and caching demo details.</div>
+            </div>
+            <div class="chart-area" id="executionInfo">
+              Waiting for Azure insights...
+            </div>
+          </div>
+
+          <div class="card chart-card">
+            <div>
+              <div class="chart-title">Pie Chart</div>
+              <div class="chart-sub">Average fat distribution by diet type.</div>
+            </div>
+            <canvas id="pieChart"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <section class="section-block">
+        <h2 class="section-title">Filters and Data Interaction</h2>
+        <div class="filters">
+          <input id="searchInput" type="text" placeholder="Search by keyword" />
+          <select id="dietFilter">
+            <option value="All">All Diet Types</option>
+          </select>
+        </div>
+
+        <div class="recipes-wrap">
+          <div class="results-bar">
+            <div id="resultsInfo">Showing recipe results</div>
+            <div>Search, filter, and pagination demo</div>
+          </div>
+
+          <div id="recipeList" class="recipe-list"></div>
+          <div id="emptyState" class="note hidden">
+            No recipes match the current search or filter.
+          </div>
+        </div>
+      </section>
+
+      <section class="section-block">
+        <h2 class="section-title">API Data Interaction</h2>
+        <div class="button-row">
+          <button class="btn btn-blue" id="insightsBtn" type="button">Get Nutritional Insights</button>
+          <button class="btn btn-green" id="recipesBtn" type="button">Get Recipes</button>
+          <button class="btn btn-purple" id="clustersBtn" type="button">Get Clusters</button>
+        </div>
+        <div class="note" id="apiMessage">Ready to connect to backend endpoints.</div>
+      </section>
+
+      <section class="section-block">
+        <h2 class="section-title">Pagination</h2>
+        <div id="pagination" class="pagination"></div>
+      </section>
+    </main>
+
+    <footer class="footer">© 2025 Nutritional Insights. All Rights Reserved.</footer>
+  </div>
+
   <script type="module" src="script.js"></script>
 </body>
 </html>
