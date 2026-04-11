@@ -8,27 +8,18 @@ import {
   GOOGLE_CLIENT_ID
 } from './auth.js';
 
-const AZURE_INSIGHTS_URL =
-  'https://diet-analysis-fn7174.azurewebsites.net/api/analyze_diet';
+const AZURE_BASE_URL = 'http://localhost:7071/api';
+const AZURE_INSIGHTS_URL = `${AZURE_BASE_URL}/get_dashboard_data`;
+const AZURE_RECIPES_URL = `${AZURE_BASE_URL}/search_recipes`;
 
-const recipes = [
-  { name: 'Avocado Chickpea Salad', diet: 'Vegan', calories: 420, protein: '14g', keyword: 'salad avocado healthy lunch', description: 'A fresh salad with chickpeas, avocado, cucumber, and lemon dressing.' },
-  { name: 'Greek Yogurt Berry Bowl', diet: 'Vegetarian', calories: 310, protein: '18g', keyword: 'berries yogurt breakfast protein', description: 'A quick breakfast bowl with berries, granola, and Greek yogurt.' },
-  { name: 'Grilled Chicken Quinoa Plate', diet: 'High Protein', calories: 510, protein: '36g', keyword: 'chicken quinoa dinner protein', description: 'Grilled chicken served with quinoa and roasted vegetables.' },
-  { name: 'Keto Garlic Butter Salmon', diet: 'Keto', calories: 560, protein: '34g', keyword: 'salmon keto low carb dinner', description: 'Pan-seared salmon with garlic butter and green beans.' },
-  { name: 'Tofu Stir Fry', diet: 'Vegan', calories: 390, protein: '19g', keyword: 'tofu vegetables stir fry vegan', description: 'Tofu cooked with colorful vegetables in a light soy-ginger sauce.' },
-  { name: 'Egg White Wrap', diet: 'Low Carb', calories: 280, protein: '22g', keyword: 'egg wrap breakfast low carb', description: 'Egg white wrap with spinach, mushrooms, and a light cheese filling.' },
-  { name: 'Lentil Soup', diet: 'Vegetarian', calories: 340, protein: '16g', keyword: 'soup lentil comfort vegetarian', description: 'A warm lentil soup packed with fiber, herbs, and vegetables.' },
-  { name: 'Beef and Broccoli Bowl', diet: 'High Protein', calories: 540, protein: '38g', keyword: 'beef broccoli protein meal', description: 'Lean beef and broccoli served over a small portion of rice.' },
-  { name: 'Cauliflower Rice Burrito Bowl', diet: 'Low Carb', calories: 360, protein: '21g', keyword: 'cauliflower rice bowl low carb', description: 'A burrito bowl using cauliflower rice, salsa, beans, and grilled chicken.' },
-  { name: 'Coconut Chia Pudding', diet: 'Vegan', calories: 250, protein: '8g', keyword: 'chia coconut snack vegan', description: 'A light chia pudding with coconut milk and fresh fruit.' },
-  { name: 'Zucchini Noodles with Turkey', diet: 'Keto', calories: 470, protein: '29g', keyword: 'zucchini turkey keto pasta', description: 'Turkey meat sauce served over zucchini noodles.' },
-  { name: 'Paneer Veggie Skillet', diet: 'Vegetarian', calories: 430, protein: '20g', keyword: 'paneer vegetables skillet dinner', description: 'Paneer cooked with peppers, tomatoes, and spices in one pan.' }
-];
+const STATE_KEY = 'nutrition_dashboard_state';
+const APP_INIT_KEY = 'nutrition_app_initialized';
 
 let currentPage = 1;
 const itemsPerPage = 4;
 let dietOptionsLoaded = false;
+let dashboardInitialized = false;
+let eventsBound = false;
 
 let barChartInstance = null;
 let pieChartInstance = null;
@@ -66,14 +57,65 @@ const executionInfo = document.getElementById('executionInfo');
 
 const insightsBtn = document.getElementById('insightsBtn');
 const recipesBtn = document.getElementById('recipesBtn');
-const clustersBtn = document.getElementById('clustersBtn');
+
+function getDefaultState() {
+  return {
+    currentPage: 1,
+    search: '',
+    diet: 'All'
+  };
+}
+
+function saveDashboardState() {
+  try {
+    const state = {
+      currentPage,
+      search: searchInput?.value ?? '',
+      diet: dietFilter?.value ?? 'All'
+    };
+    sessionStorage.setItem(STATE_KEY, JSON.stringify(state));
+  } catch (error) {
+    console.error('Could not save dashboard state:', error);
+  }
+}
+
+function loadDashboardState() {
+  try {
+    const raw = sessionStorage.getItem(STATE_KEY);
+    if (!raw) return getDefaultState();
+
+    const parsed = JSON.parse(raw);
+    return {
+      currentPage: Number(parsed.currentPage) > 0 ? Number(parsed.currentPage) : 1,
+      search: typeof parsed.search === 'string' ? parsed.search : '',
+      diet: typeof parsed.diet === 'string' ? parsed.diet : 'All'
+    };
+  } catch (error) {
+    console.error('Could not load dashboard state:', error);
+    return getDefaultState();
+  }
+}
+
+function applySavedStateToInputs() {
+  const state = loadDashboardState();
+
+  currentPage = state.currentPage;
+
+  if (searchInput) {
+    searchInput.value = state.search;
+  }
+
+  if (dietFilter) {
+    dietFilter.value = state.diet;
+  }
+}
 
 function switchTab(tab) {
   const isLogin = tab === 'login';
-  loginTab.classList.toggle('active', isLogin);
-  registerTab.classList.toggle('active', !isLogin);
-  loginPanel.classList.toggle('hidden', !isLogin);
-  registerPanel.classList.toggle('hidden', isLogin);
+  loginTab?.classList.toggle('active', isLogin);
+  registerTab?.classList.toggle('active', !isLogin);
+  loginPanel?.classList.toggle('hidden', !isLogin);
+  registerPanel?.classList.toggle('hidden', isLogin);
 }
 
 function setButtonLoading(button, loading, originalText) {
@@ -83,13 +125,13 @@ function setButtonLoading(button, loading, originalText) {
 }
 
 function showAuth() {
-  dashboardView.classList.add('hidden');
-  authView.classList.remove('hidden');
+  dashboardView?.classList.add('hidden');
+  authView?.classList.remove('hidden');
 }
 
 function showDashboard() {
-  authView.classList.add('hidden');
-  dashboardView.classList.remove('hidden');
+  authView?.classList.add('hidden');
+  dashboardView?.classList.remove('hidden');
 }
 
 async function verifyUser() {
@@ -106,6 +148,7 @@ async function verifyUser() {
 
     if (!response.ok) {
       logoutUser();
+      sessionStorage.removeItem(STATE_KEY);
       return null;
     }
 
@@ -115,118 +158,262 @@ async function verifyUser() {
   } catch (error) {
     console.error('Verify user error:', error);
     logoutUser();
+    sessionStorage.removeItem(STATE_KEY);
     return null;
   }
 }
 
-function openDashboard(user) {
+async function openDashboard(user, forceRefresh = false) {
   const name = user?.name || getStoredUser()?.name || 'User';
-  welcomeUser.textContent = `Welcome, ${name}`;
+
+  if (welcomeUser) {
+    welcomeUser.textContent = `Welcome, ${name}`;
+  }
+
   showDashboard();
 
   if (!dietOptionsLoaded) {
-    populateDietOptions();
+    await populateDietOptions();
     dietOptionsLoaded = true;
   }
 
-  currentPage = 1;
-  renderRecipes();
-  renderChartsFromAzure();
+  applySavedStateToInputs();
+
+  if (dashboardInitialized && !forceRefresh) {
+    return;
+  }
+
+  dashboardInitialized = true;
+
+  if (!currentPage || currentPage < 1) {
+    currentPage = 1;
+  }
 }
 
-function populateDietOptions() {
-  const existingOptions = Array.from(dietFilter.options).map((option) => option.value);
-  const diets = [...new Set(recipes.map((recipe) => recipe.diet))].sort();
+async function fetchAvailableDietOptions() {
+  try {
+    const res = await fetch(AZURE_INSIGHTS_URL);
+    if (!res.ok) {
+      throw new Error(`Insights API failed with status ${res.status}`);
+    }
+
+    const data = await res.json();
+    const averages = data?.analysis?.averages_by_diet || {};
+
+    return Object.keys(averages).sort();
+  } catch (error) {
+    console.error('Failed to fetch diet options:', error);
+    return [];
+  }
+}
+
+async function populateDietOptions() {
+  if (!dietFilter) return;
+
+  const savedState = loadDashboardState();
+  const existingOptions = Array.from(dietFilter.options).map((option) =>
+    option.value.toLowerCase()
+  );
+
+  const diets = await fetchAvailableDietOptions();
 
   diets.forEach((diet) => {
-    if (!existingOptions.includes(diet)) {
+    if (!existingOptions.includes(diet.toLowerCase())) {
       const option = document.createElement('option');
       option.value = diet;
       option.textContent = diet;
       dietFilter.appendChild(option);
     }
   });
+
+  const optionExists = Array.from(dietFilter.options).some(
+    (option) => option.value === savedState.diet
+  );
+
+  dietFilter.value = optionExists ? savedState.diet : 'All';
 }
 
-function getFilteredRecipes() {
-  const keyword = searchInput.value.trim().toLowerCase();
-  const selectedDiet = dietFilter.value;
+async function fetchRecipesFromApi() {
+  const keyword = encodeURIComponent(searchInput?.value.trim() || '');
+  const selectedDiet = dietFilter?.value || 'All';
+  const diet = selectedDiet === 'All' ? '' : encodeURIComponent(selectedDiet);
+  const page = currentPage;
 
-  return recipes.filter((recipe) => {
-    const matchesDiet = selectedDiet === 'All' || recipe.diet === selectedDiet;
-    const haystack = `${recipe.name} ${recipe.diet} ${recipe.keyword} ${recipe.description}`.toLowerCase();
-    const matchesKeyword = haystack.includes(keyword);
-    return matchesDiet && matchesKeyword;
-  });
-}
+  const url = `${AZURE_RECIPES_URL}?q=${keyword}&diet=${diet}&page=${page}&limit=${itemsPerPage}`;
 
-function renderRecipes() {
-  const filtered = getFilteredRecipes();
-  const totalPages = Math.max(1, Math.ceil(filtered.length / itemsPerPage));
-
-  if (currentPage > totalPages) currentPage = totalPages;
-
-  const start = (currentPage - 1) * itemsPerPage;
-  const pageItems = filtered.slice(start, start + itemsPerPage);
-
-  recipeList.innerHTML = '';
-  emptyState.classList.toggle('hidden', filtered.length !== 0);
-
-  if (filtered.length === 0) {
-    resultsInfo.textContent = 'Showing 0 results';
-  } else {
-    resultsInfo.textContent = `Showing ${start + 1}-${Math.min(start + itemsPerPage, filtered.length)} of ${filtered.length} results`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`Recipe API failed with status ${res.status}`);
   }
 
-  pageItems.forEach((recipe) => {
-    const card = document.createElement('div');
-    card.className = 'card recipe-card';
-    card.innerHTML = `
-      <span class="meta">${recipe.diet}</span>
-      <h4>${recipe.name}</h4>
-      <p>${recipe.description}</p>
-      <p><strong>Calories:</strong> ${recipe.calories}</p>
-      <p><strong>Protein:</strong> ${recipe.protein}</p>
-    `;
-    recipeList.appendChild(card);
-  });
-
-  renderPagination(totalPages);
+  return res.json();
 }
 
 function renderPagination(totalPages) {
+  if (!pagination) return;
+
   pagination.innerHTML = '';
 
+  const safeTotalPages = Math.max(1, totalPages);
+  const maxVisiblePages = 7;
+
   const prevBtn = document.createElement('button');
+  prevBtn.type = 'button';
   prevBtn.className = 'page-btn';
   prevBtn.textContent = 'Previous';
   prevBtn.disabled = currentPage === 1;
-  prevBtn.addEventListener('click', () => {
-    currentPage -= 1;
-    renderRecipes();
+  prevBtn.addEventListener('click', async (event) => {
+    event.preventDefault();
+    if (currentPage > 1) {
+      currentPage -= 1;
+      saveDashboardState();
+      await renderRecipes();
+    }
   });
   pagination.appendChild(prevBtn);
 
-  for (let i = 1; i <= totalPages; i += 1) {
+  let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+  let endPage = startPage + maxVisiblePages - 1;
+
+  if (endPage > safeTotalPages) {
+    endPage = safeTotalPages;
+    startPage = Math.max(1, endPage - maxVisiblePages + 1);
+  }
+
+  if (startPage > 1) {
+    const firstBtn = document.createElement('button');
+    firstBtn.type = 'button';
+    firstBtn.className = `page-btn ${currentPage === 1 ? 'active' : ''}`;
+    firstBtn.textContent = '1';
+    firstBtn.addEventListener('click', async (event) => {
+      event.preventDefault();
+      currentPage = 1;
+      saveDashboardState();
+      await renderRecipes();
+    });
+    pagination.appendChild(firstBtn);
+
+    if (startPage > 2) {
+      const dots = document.createElement('span');
+      dots.className = 'page-dots';
+      dots.textContent = '...';
+      pagination.appendChild(dots);
+    }
+  }
+
+  for (let i = startPage; i <= endPage; i += 1) {
     const pageBtn = document.createElement('button');
+    pageBtn.type = 'button';
     pageBtn.className = `page-btn ${i === currentPage ? 'active' : ''}`;
     pageBtn.textContent = `${i}`;
-    pageBtn.addEventListener('click', () => {
+    pageBtn.addEventListener('click', async (event) => {
+      event.preventDefault();
       currentPage = i;
-      renderRecipes();
+      saveDashboardState();
+      await renderRecipes();
     });
     pagination.appendChild(pageBtn);
   }
 
+  if (endPage < safeTotalPages) {
+    if (endPage < safeTotalPages - 1) {
+      const dots = document.createElement('span');
+      dots.className = 'page-dots';
+      dots.textContent = '...';
+      pagination.appendChild(dots);
+    }
+
+    const lastBtn = document.createElement('button');
+    lastBtn.type = 'button';
+    lastBtn.className = `page-btn ${currentPage === safeTotalPages ? 'active' : ''}`;
+    lastBtn.textContent = `${safeTotalPages}`;
+    lastBtn.addEventListener('click', async (event) => {
+      event.preventDefault();
+      currentPage = safeTotalPages;
+      saveDashboardState();
+      await renderRecipes();
+    });
+    pagination.appendChild(lastBtn);
+  }
+
   const nextBtn = document.createElement('button');
+  nextBtn.type = 'button';
   nextBtn.className = 'page-btn';
   nextBtn.textContent = 'Next';
-  nextBtn.disabled = currentPage === totalPages;
-  nextBtn.addEventListener('click', () => {
-    currentPage += 1;
-    renderRecipes();
+  nextBtn.disabled = currentPage === safeTotalPages;
+  nextBtn.addEventListener('click', async (event) => {
+    event.preventDefault();
+    if (currentPage < safeTotalPages) {
+      currentPage += 1;
+      saveDashboardState();
+      await renderRecipes();
+    }
   });
   pagination.appendChild(nextBtn);
+}
+
+async function renderRecipes() {
+  if (!recipeList || !resultsInfo || !emptyState) return;
+
+  try {
+    saveDashboardState();
+
+    const data = await fetchRecipesFromApi();
+    const results = Array.isArray(data?.results) ? data.results : [];
+    const paginationData = data?.pagination || {};
+    const totalItems = Number(paginationData.total_items || 0);
+    const totalPages = Number(paginationData.total_pages || 1);
+    const current = Number(paginationData.current_page || currentPage);
+    const limit = Number(paginationData.limit || itemsPerPage);
+
+    currentPage = current;
+    saveDashboardState();
+
+    recipeList.innerHTML = '';
+    emptyState.classList.toggle('hidden', results.length !== 0);
+
+    if (results.length === 0) {
+      resultsInfo.textContent = 'Showing 0 results';
+      renderPagination(1);
+      return;
+    }
+
+    const start = (current - 1) * limit + 1;
+    const end = Math.min(start + results.length - 1, totalItems);
+    resultsInfo.textContent = `Showing ${start}-${end} of ${totalItems} results`;
+
+    results.forEach((recipe) => {
+      const card = document.createElement('div');
+      card.className = 'card recipe-card';
+
+      const recipeName = recipe.Recipe_name || 'Unnamed Recipe';
+      const recipeDiet = recipe.Diet_type || 'Unknown Diet';
+      const recipeCuisine = recipe.Cuisine_type || 'Unknown Cuisine';
+      const protein = recipe['Protein(g)'] ?? 'N/A';
+      const carbs = recipe['Carbs(g)'] ?? 'N/A';
+      const fat = recipe['Fat(g)'] ?? 'N/A';
+
+      card.innerHTML = `
+        <span class="meta">${recipeDiet}</span>
+        <h4>${recipeName}</h4>
+        <p>${recipeCuisine}</p>
+        <p><strong>Protein:</strong> ${protein}g</p>
+        <p><strong>Carbs:</strong> ${carbs}g</p>
+        <p><strong>Fat:</strong> ${fat}g</p>
+      `;
+
+      recipeList.appendChild(card);
+    });
+
+    renderPagination(totalPages);
+  } catch (error) {
+    console.error('Recipe render error:', error);
+    recipeList.innerHTML = '';
+    emptyState.classList.remove('hidden');
+    resultsInfo.textContent = 'Could not load recipes.';
+    if (pagination) pagination.innerHTML = '';
+    if (apiMessage) apiMessage.textContent = `Recipe API failed: ${error.message}`;
+  }
 }
 
 async function fetchAzureInsights() {
@@ -237,20 +424,19 @@ async function fetchAzureInsights() {
   return response.json();
 }
 
-function extractMetric(obj, possibleKeys) {
-  for (const key of possibleKeys) {
-    if (obj[key] !== undefined && obj[key] !== null) {
-      const value = Number(obj[key]);
-      if (!Number.isNaN(value)) return value;
-    }
-  }
-  return 0;
-}
-
 function destroyCharts() {
-  if (barChartInstance) barChartInstance.destroy();
-  if (pieChartInstance) pieChartInstance.destroy();
-  if (scatterChartInstance) scatterChartInstance.destroy();
+  if (barChartInstance) {
+    barChartInstance.destroy();
+    barChartInstance = null;
+  }
+  if (pieChartInstance) {
+    pieChartInstance.destroy();
+    pieChartInstance = null;
+  }
+  if (scatterChartInstance) {
+    scatterChartInstance.destroy();
+    scatterChartInstance = null;
+  }
 }
 
 async function renderChartsFromAzure() {
@@ -267,8 +453,9 @@ async function renderChartsFromAzure() {
 
     const apiData = await fetchAzureInsights();
     const averages = apiData?.analysis?.averages_by_diet || {};
-    const highestProteinDiet = apiData?.analysis?.highest_protein_diet || 'N/A';
-    const execTime = apiData?.metadata?.execution_time_sec ?? 'N/A';
+    const recipeDistribution = apiData?.analysis?.recipe_distribution || {};
+    const execTime = apiData?.execution_time_sec ?? 'N/A';
+    const lastUpdated = apiData?.last_updated || 'N/A';
 
     const labels = Object.keys(averages);
 
@@ -278,35 +465,20 @@ async function renderChartsFromAzure() {
     }
 
     const protein = labels.map((diet) =>
-      extractMetric(averages[diet], [
-        'Protein(g)',
-        'protein',
-        'avg_protein',
-        'average_protein'
-      ])
+      Number(averages[diet]?.['Protein(g)'] ?? 0)
     );
 
     const carbs = labels.map((diet) =>
-      extractMetric(averages[diet], [
-        'Carbs(g)',
-        'carbs',
-        'carbohydrates',
-        'avg_carbs',
-        'average_carbs'
-      ])
+      Number(averages[diet]?.['Carbs(g)'] ?? 0)
     );
 
-    const fats = labels.map((diet) =>
-      extractMetric(averages[diet], [
-        'Fat(g)',
-        'fat',
-        'fats',
-        'avg_fat',
-        'average_fat'
-      ])
+    const pieValues = labels.map((diet) =>
+      Number(recipeDistribution[diet] || 0)
     );
 
     destroyCharts();
+
+    const maxProtein = Math.max(...protein, 0);
 
     barChartInstance = new Chart(barCtx, {
       type: 'bar',
@@ -314,7 +486,7 @@ async function renderChartsFromAzure() {
         labels,
         datasets: [
           {
-            label: 'Average Protein (g)',
+            label: 'Average Protein',
             data: protein
           }
         ]
@@ -324,7 +496,12 @@ async function renderChartsFromAzure() {
         maintainAspectRatio: false,
         scales: {
           y: {
-            beginAtZero: true
+            beginAtZero: true,
+            suggestedMax: maxProtein > 0 ? maxProtein * 1.15 : 100,
+            title: {
+              display: true,
+              text: 'Average Protein (g)'
+            }
           }
         }
       }
@@ -336,8 +513,8 @@ async function renderChartsFromAzure() {
         labels,
         datasets: [
           {
-            label: 'Average Fat (g)',
-            data: fats
+            label: 'Recipe Distribution',
+            data: pieValues
           }
         ]
       },
@@ -352,7 +529,7 @@ async function renderChartsFromAzure() {
       data: {
         datasets: [
           {
-            label: 'Protein vs Carbs',
+            label: 'Carbs vs Protein',
             data: labels.map((diet, index) => ({
               x: carbs[index],
               y: protein[index],
@@ -397,11 +574,10 @@ async function renderChartsFromAzure() {
       <div>
         <strong>Azure Function Connected</strong><br />
         API Endpoint Loaded Successfully.<br />
-        Execution Time: ${execTime} sec<br />
-        Highest Protein Diet: ${highestProteinDiet}
+        Last Updated: ${lastUpdated}<br />
+        Execution Time: ${execTime} sec
       </div>
     `;
-
   } catch (error) {
     console.error('Azure insights error:', error);
     executionInfo.textContent = 'Could not load Azure insights. Check CORS or endpoint availability.';
@@ -410,8 +586,8 @@ async function renderChartsFromAzure() {
 }
 
 async function handleLogin() {
-  const email = loginEmail.value.trim();
-  const password = loginPassword.value.trim();
+  const email = loginEmail?.value.trim();
+  const password = loginPassword?.value.trim();
 
   if (!email || !password) {
     alert('Please enter your email and password.');
@@ -422,8 +598,12 @@ async function handleLogin() {
 
   try {
     const user = await loginUser(email, password);
-    openDashboard(user);
-    loginPassword.value = '';
+    dashboardInitialized = false;
+    await openDashboard(user, true);
+
+    if (loginPassword) {
+      loginPassword.value = '';
+    }
   } catch (error) {
     console.error('Login error:', error);
     alert(error.message || 'Login failed.');
@@ -433,10 +613,10 @@ async function handleLogin() {
 }
 
 async function handleRegister() {
-  const name = registerName.value.trim();
-  const email = registerEmail.value.trim();
-  const password = registerPassword.value.trim();
-  const confirmPassword = registerConfirmPassword.value.trim();
+  const name = registerName?.value.trim();
+  const email = registerEmail?.value.trim();
+  const password = registerPassword?.value.trim();
+  const confirmPassword = registerConfirmPassword?.value.trim();
 
   if (!name || !email || !password || !confirmPassword) {
     alert('Please fill in all registration fields.');
@@ -457,12 +637,13 @@ async function handleRegister() {
 
   try {
     const user = await registerUser(name, email, password);
-    openDashboard(user);
+    dashboardInitialized = false;
+    await openDashboard(user, true);
 
-    registerName.value = '';
-    registerEmail.value = '';
-    registerPassword.value = '';
-    registerConfirmPassword.value = '';
+    if (registerName) registerName.value = '';
+    if (registerEmail) registerEmail.value = '';
+    if (registerPassword) registerPassword.value = '';
+    if (registerConfirmPassword) registerConfirmPassword.value = '';
   } catch (error) {
     console.error('Register error:', error);
     alert(error.message || 'Registration failed.');
@@ -473,54 +654,40 @@ async function handleRegister() {
 
 function handleLogout() {
   logoutUser();
+  sessionStorage.removeItem(STATE_KEY);
+  dashboardInitialized = false;
+  currentPage = 1;
   showAuth();
 }
 
 function handleApiButtons() {
-  insightsBtn?.addEventListener('click', async () => {
+  insightsBtn?.addEventListener('click', async (event) => {
+    event.preventDefault();
     apiMessage.textContent = 'Loading Azure nutritional insights...';
     await renderChartsFromAzure();
+
     if (!apiMessage.textContent.includes('failed')) {
       apiMessage.textContent = 'Azure Function data loaded into charts successfully.';
     }
   });
 
-  recipesBtn?.addEventListener('click', () => {
-    apiMessage.textContent = 'Recipe search, filtering, and pagination are currently running on frontend demo data.';
-  });
+  recipesBtn?.addEventListener('click', async (event) => {
+    event.preventDefault();
+    apiMessage.textContent = 'Loading recipes from Azure API...';
 
-  clustersBtn?.addEventListener('click', () => {
-    apiMessage.textContent = 'Cluster endpoint is not connected yet in this frontend version.';
-  });
-}
+    saveDashboardState();
+    await renderRecipes();
 
-function initializeGoogleSignIn() {
-  if (!window.google || !document.getElementById('googleSignInContainer')) return;
-
-  window.google.accounts.id.initialize({
-    client_id: GOOGLE_CLIENT_ID,
-    callback: async (response) => {
-      try {
-        const user = await googleLogin(response.credential);
-        openDashboard(user);
-      } catch (error) {
-        console.error('Google login error:', error);
-        alert(error.message || 'Google login failed.');
-      }
+    if (!apiMessage.textContent.includes('failed')) {
+      apiMessage.textContent = 'Recipe search, filter, and pagination are now using the Azure API.';
     }
   });
-
-  window.google.accounts.id.renderButton(
-    document.getElementById('googleSignInContainer'),
-    {
-      theme: 'outline',
-      size: 'large',
-      width: 260
-    }
-  );
 }
 
 function bindEvents() {
+  if (eventsBound) return;
+  eventsBound = true;
+
   loginTab?.addEventListener('click', () => switchTab('login'));
   registerTab?.addEventListener('click', () => switchTab('register'));
 
@@ -528,35 +695,82 @@ function bindEvents() {
   registerBtn?.addEventListener('click', handleRegister);
   logoutBtn?.addEventListener('click', handleLogout);
 
+  let searchDebounce;
+
   searchInput?.addEventListener('input', () => {
-    currentPage = 1;
-    renderRecipes();
+    clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(async () => {
+      currentPage = 1;
+      saveDashboardState();
+      await renderRecipes();
+    }, 300);
   });
 
-  dietFilter?.addEventListener('change', () => {
+  dietFilter?.addEventListener('change', async () => {
     currentPage = 1;
-    renderRecipes();
+    saveDashboardState();
+    await renderRecipes();
   });
 
   loginPassword?.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') handleLogin();
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      handleLogin();
+    }
   });
 
   registerConfirmPassword?.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') handleRegister();
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      handleRegister();
+    }
   });
 
   handleApiButtons();
 }
 
+function initializeGoogleSignIn() {
+  const googleContainer = document.getElementById('googleSignInContainer');
+  if (!window.google || !googleContainer) return;
+
+  googleContainer.innerHTML = '';
+
+  window.google.accounts.id.initialize({
+    client_id: GOOGLE_CLIENT_ID,
+    callback: async (response) => {
+      try {
+        const user = await googleLogin(response.credential);
+        dashboardInitialized = false;
+        await openDashboard(user, true);
+      } catch (error) {
+        console.error('Google login error:', error);
+        alert(error.message || 'Google login failed.');
+      }
+    }
+  });
+
+  window.google.accounts.id.renderButton(googleContainer, {
+    theme: 'outline',
+    size: 'large',
+    width: 260
+  });
+}
+
 async function startApp() {
+  if (window[APP_INIT_KEY]) {
+    console.log('App already initialized, skipping duplicate start.');
+    return;
+  }
+
+  window[APP_INIT_KEY] = true;
+
   bindEvents();
   switchTab('login');
 
   const user = await verifyUser();
 
   if (user) {
-    openDashboard(user);
+    await openDashboard(user, true);
   } else {
     showAuth();
   }

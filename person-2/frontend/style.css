@@ -17,6 +17,15 @@
   box-sizing: border-box;
 }
 
+.page-dots {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  margin: 4px;
+  font-weight: 600;
+}
+
 body {
   margin: 0;
   font-family: Arial, Helvetica, sans-serif;
