@@ -11,6 +11,21 @@ import {
 const AZURE_INSIGHTS_URL =
   'https://diet-analysis-fn7174.azurewebsites.net/api/analyze_diet';
 
+const recipes = [
+  { name: 'Avocado Chickpea Salad', diet: 'Vegan', calories: 420, protein: '14g', keyword: 'salad avocado healthy lunch', description: 'A fresh salad with chickpeas, avocado, cucumber, and lemon dressing.' },
+  { name: 'Greek Yogurt Berry Bowl', diet: 'Vegetarian', calories: 310, protein: '18g', keyword: 'berries yogurt breakfast protein', description: 'A quick breakfast bowl with berries, granola, and Greek yogurt.' },
+  { name: 'Grilled Chicken Quinoa Plate', diet: 'High Protein', calories: 510, protein: '36g', keyword: 'chicken quinoa dinner protein', description: 'Grilled chicken served with quinoa and roasted vegetables.' },
+  { name: 'Keto Garlic Butter Salmon', diet: 'Keto', calories: 560, protein: '34g', keyword: 'salmon keto low carb dinner', description: 'Pan-seared salmon with garlic butter and green beans.' },
+  { name: 'Tofu Stir Fry', diet: 'Vegan', calories: 390, protein: '19g', keyword: 'tofu vegetables stir fry vegan', description: 'Tofu cooked with colorful vegetables in a light soy-ginger sauce.' },
+  { name: 'Egg White Wrap', diet: 'Low Carb', calories: 280, protein: '22g', keyword: 'egg wrap breakfast low carb', description: 'Egg white wrap with spinach, mushrooms, and a light cheese filling.' },
+  { name: 'Lentil Soup', diet: 'Vegetarian', calories: 340, protein: '16g', keyword: 'soup lentil comfort vegetarian', description: 'A warm lentil soup packed with fiber, herbs, and vegetables.' },
+  { name: 'Beef and Broccoli Bowl', diet: 'High Protein', calories: 540, protein: '38g', keyword: 'beef broccoli protein meal', description: 'Lean beef and broccoli served over a small portion of rice.' },
+  { name: 'Cauliflower Rice Burrito Bowl', diet: 'Low Carb', calories: 360, protein: '21g', keyword: 'cauliflower rice bowl low carb', description: 'A burrito bowl using cauliflower rice, salsa, beans, and grilled chicken.' },
+  { name: 'Coconut Chia Pudding', diet: 'Vegan', calories: 250, protein: '8g', keyword: 'chia coconut snack vegan', description: 'A light chia pudding with coconut milk and fresh fruit.' },
+  { name: 'Zucchini Noodles with Turkey', diet: 'Keto', calories: 470, protein: '29g', keyword: 'zucchini turkey keto pasta', description: 'Turkey meat sauce served over zucchini noodles.' },
+  { name: 'Paneer Veggie Skillet', diet: 'Vegetarian', calories: 430, protein: '20g', keyword: 'paneer vegetables skillet dinner', description: 'Paneer cooked with peppers, tomatoes, and spices in one pan.' }
+];
+
 let currentPage = 1;
 const itemsPerPage = 4;
 let dietOptionsLoaded = false;
