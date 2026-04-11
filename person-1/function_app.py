@@ -5,66 +5,157 @@ import os
 from azure.storage.blob import BlobServiceClient
 import io
 import time
+import math
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
-@app.route(route="analyze_diet")
-def analyze_diet(req: func.HttpRequest) -> func.HttpResponse:
-    start_time = time.time()
-    
-    # 1. Configuration (In Azure, use Environment Variables/App Settings)
-    connection_string = os.environ.get("AzureWebJobsStorage") 
-    container_name = "datasets"
-    blob_name = "All_Diets.csv"
+# --- CONFIGURATION (Load from environment variables) ---
+CONNECTION_STRING = os.environ.get("AzureWebJobsStorage")
+INPUT_CONTAINER = "datasets"
+INPUT_BLOB = "All_Diets.csv"
+OUTPUT_CONTAINER = "processed"
+CLEANED_BLOB = "Cleaned_Diets.csv"
+CACHE_BLOB = "dashboard_cache.json"
 
+# --- HELPER: Get Blob Service Client ---
+def get_blob_service():
+    return BlobServiceClient.from_connection_string(CONNECTION_STRING)
+
+# --- 1. PERFORMANCE: BLOB TRIGGER (Data Cleaning & Precomputation) ---
+@app.blob_trigger(arg_name="myblob", path=f"{INPUT_CONTAINER}/{INPUT_BLOB}", connection="AzureWebJobsStorage")
+def clean_and_precompute(myblob: func.InputStream):
+    """
+    Triggered when All_Diets.csv is updated.
+    Cleans data, saves a processed CSV, and precomputes results for the dashboard.
+    """
     try:
-        # 2. Download from Blob Storage
-        blob_service_client = BlobServiceClient.from_connection_string(connection_string)
-        blob_client = blob_service_client.get_blob_client(container=container_name, blob=blob_name)
+        start_time = time.time()
         
-        stream = blob_client.download_blob().readall()
-        df = pd.read_csv(io.BytesIO(stream))
+        # 1. Read the input blob
+        df = pd.read_csv(io.BytesIO(myblob.read()))
         
-        # 3. Data Cleaning
+        # 2. Data Cleaning
         df.columns = df.columns.str.strip()
-        cols_to_avg = ['Protein(g)', 'Carbs(g)', 'Fat(g)']
+        # Drop duplicates and rows with missing critical info
+        df = df.dropna(subset=['Diet_type', 'Recipe_name', 'Cuisine_type'])
         
-        # Ensure numeric conversion
-        for col in cols_to_avg:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
+        # Numeric conversion for nutritional info
+        cols_to_clean = ['Protein(g)', 'Carbs(g)', 'Fat(g)', 'Calories']
+        for col in cols_to_clean:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
         
-        # 4. Analysis
-        # Averages by Diet Type
-        averages = df.groupby('Diet_type')[cols_to_avg].mean().to_dict('index')
+        # 3. Save Cleaned Dataset to Blob Storage (Performance: Data Interaction API uses this)
+        blob_service_client = get_blob_service()
+        container_client = blob_service_client.get_container_client(OUTPUT_CONTAINER)
+        if not container_client.exists():
+            container_client.create_container()
+            
+        cleaned_csv_data = df.to_csv(index=False)
+        blob_service_client.get_blob_client(container=OUTPUT_CONTAINER, blob=CLEANED_BLOB).upload_blob(cleaned_csv_data, overwrite=True)
         
-        # Top Protein Diet
-        highest_diet = df.groupby('Diet_type')['Protein(g)'].mean().idxmax()
+        # 4. PRECOMPUTATION (Performance: Calculation done only once on change)
+        averages = df.groupby('Diet_type')[['Protein(g)', 'Carbs(g)', 'Fat(g)', 'Calories']].mean().to_dict('index')
+        recipe_distribution = df['Diet_type'].value_counts().to_dict()
         
-        end_time = time.time()
-        execution_time = round(end_time - start_time, 4)
+        # Precompute top recipes for quick display
+        top_recipes = df.sort_values(by='Protein(g)', ascending=False).head(10)[['Recipe_name', 'Diet_type', 'Protein(g)']].to_dict('records')
 
-        # 5. Build Response JSON
-        result = {
-            "metadata": {
-                "execution_time_sec": execution_time,
-                "dataset": blob_name,
-                "status": "success"
-            },
+        # 5. Build and Save Cache JSON (Can be moved to CosmosDB/Redis in production)
+        cache_data = {
+            "last_updated": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "execution_time_sec": round(time.time() - start_time, 4),
             "analysis": {
                 "averages_by_diet": averages,
-                "highest_protein_diet": highest_diet
+                "recipe_distribution": recipe_distribution,
+                "top_recipes": top_recipes
             }
         }
-
-        return func.HttpResponse(
-            json.dumps(result),
-            mimetype="application/json",
-            status_code=200
-        )
+        
+        blob_service_client.get_blob_client(container=OUTPUT_CONTAINER, blob=CACHE_BLOB).upload_blob(json.dumps(cache_data), overwrite=True)
+        print(f"Success: Processed {INPUT_BLOB} and updated cache.")
 
     except Exception as e:
-        return func.HttpResponse(
-            json.dumps({"error": str(e)}),
-            mimetype="application/json",
-            status_code=500
-        )
+        print(f"Error in clean_and_precompute: {str(e)}")
+
+
+# --- 2. PERFORMANCE: FAST DASHBOARD DATA API (Read from Cache) ---
+@app.route(route="get_dashboard_data", methods=["GET"])
+def get_dashboard_data(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Returns precomputed dashboard stats. Fast because no calculations are done on-request.
+    """
+    try:
+        blob_service_client = get_blob_service()
+        blob_client = blob_service_client.get_blob_client(container=OUTPUT_CONTAINER, blob=CACHE_BLOB)
+        
+        if not blob_client.exists():
+            return func.HttpResponse(json.dumps({"error": "Cache not ready. Upload dataset first."}), status_code=404, mimetype="application/json")
+            
+        cache_content = blob_client.download_blob().readall()
+        return func.HttpResponse(cache_content, mimetype="application/json")
+
+    except Exception as e:
+        return func.HttpResponse(json.dumps({"error": str(e)}), status_code=500, mimetype="application/json")
+
+
+# --- 3. DATA INTERACTION: SEARCH, FILTER & PAGINATION ---
+@app.route(route="search_recipes", methods=["GET"])
+def search_recipes(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Allows user to interact with the dataset by searching keywords, 
+    filtering by diet, and using pagination.
+    Params: 
+      - q: search keyword (optional)
+      - diet: diet type filter (optional)
+      - page: page number (default 1)
+      - limit: items per page (default 10)
+    """
+    try:
+        # 1. Read params
+        query = req.params.get('q', '').lower()
+        diet_filter = req.params.get('diet', '').lower()
+        page = int(req.params.get('page', 1))
+        limit = int(req.params.get('limit', 10))
+
+        # 2. Get the cleaned data
+        blob_service_client = get_blob_service()
+        blob_client = blob_service_client.get_blob_client(container=OUTPUT_CONTAINER, blob=CLEANED_BLOB)
+        
+        if not blob_client.exists():
+            return func.HttpResponse(json.dumps({"error": "No data available."}), status_code=404, mimetype="application/json")
+
+        csv_content = blob_client.download_blob().readall()
+        df = pd.read_csv(io.BytesIO(csv_content))
+
+        # 3. Apply Filters
+        if diet_filter and diet_filter != 'all':
+            df = df[df['Diet_type'].str.lower() == diet_filter]
+        
+        if query:
+            # Search in Recipe_name or Cuisine_type
+            df = df[df['Recipe_name'].str.lower().str.contains(query) | df['Cuisine_type'].str.lower().str.contains(query)]
+
+        # 4. Pagination
+        total_items = len(df)
+        total_pages = math.ceil(total_items / limit)
+        start_idx = (page - 1) * limit
+        end_idx = start_idx + limit
+        
+        results = df.iloc[start_idx:end_idx].to_dict('records')
+
+        # 5. Return Response
+        response_data = {
+            "results": results,
+            "pagination": {
+                "current_page": page,
+                "total_pages": total_pages,
+                "total_items": total_items,
+                "limit": limit
+            }
+        }
+        
+        return func.HttpResponse(json.dumps(response_data), mimetype="application/json")
+
+    except Exception as e:
+        return func.HttpResponse(json.dumps({"error": str(e)}), status_code=500, mimetype="application/json")
