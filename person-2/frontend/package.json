@@ -2,6 +2,9 @@
   "name": "frontend",
   "version": "1.0.0",
   "type": "module",
+  "scripts": {
+    "build": "echo 'Static site - no build needed'"
+  },
   "dependencies": {
     "@auth0/auth0-spa-js": "^2.18.3"
   }
