@@ -93,7 +93,13 @@ def get_dashboard_data(req: func.HttpRequest) -> func.HttpResponse:
             return func.HttpResponse(json.dumps({"error": "Cache not ready. Upload dataset first."}), status_code=404, mimetype="application/json")
             
         cache_content = blob_client.download_blob().readall()
-        return func.HttpResponse(cache_content, mimetype="application/json")
+        data = json.loads(cache_content)
+        
+        # Add diet list for the frontend filter
+        if "analysis" in data and "averages_by_diet" in data["analysis"]:
+            data["diets"] = sorted(list(data["analysis"]["averages_by_diet"].keys()))
+            
+        return func.HttpResponse(json.dumps(data), mimetype="application/json")
 
     except Exception as e:
         return func.HttpResponse(json.dumps({"error": str(e)}), status_code=500, mimetype="application/json")
@@ -105,11 +111,6 @@ def search_recipes(req: func.HttpRequest) -> func.HttpResponse:
     """
     Allows user to interact with the dataset by searching keywords, 
     filtering by diet, and using pagination.
-    Params: 
-      - q: search keyword (optional)
-      - diet: diet type filter (optional)
-      - page: page number (default 1)
-      - limit: items per page (default 10)
     """
     try:
         # 1. Read params
@@ -129,11 +130,10 @@ def search_recipes(req: func.HttpRequest) -> func.HttpResponse:
         df = pd.read_csv(io.BytesIO(csv_content))
 
         # 3. Apply Filters
-        if diet_filter and diet_filter != 'all':
+        if diet_filter and diet_filter.lower() != 'all':
             df = df[df['Diet_type'].str.lower() == diet_filter]
         
         if query:
-            # Search in Recipe_name or Cuisine_type
             df = df[df['Recipe_name'].str.lower().str.contains(query) | df['Cuisine_type'].str.lower().str.contains(query)]
 
         # 4. Pagination
@@ -142,9 +142,9 @@ def search_recipes(req: func.HttpRequest) -> func.HttpResponse:
         start_idx = (page - 1) * limit
         end_idx = start_idx + limit
         
-        results = df.iloc[start_idx:end_idx].to_dict('records')
+        # Clean results for JSON (handle NaN)
+        results = df.iloc[start_idx:end_idx].fillna('').to_dict('records')
 
-        # 5. Return Response
         response_data = {
             "results": results,
             "pagination": {
@@ -156,6 +156,51 @@ def search_recipes(req: func.HttpRequest) -> func.HttpResponse:
         }
         
         return func.HttpResponse(json.dumps(response_data), mimetype="application/json")
+
+    except Exception as e:
+        return func.HttpResponse(json.dumps({"error": str(e)}), status_code=500, mimetype="application/json")
+
+
+# --- 4. DATA SCIENCE: CLUSTERING (Diet Profiling) ---
+@app.route(route="get_clusters", methods=["GET"])
+def get_clusters(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Groups diet types into clusters (e.g., High Protein, Low Carb, Balanced) 
+    based on their nutritional profiles.
+    """
+    try:
+        blob_service_client = get_blob_service()
+        blob_client = blob_service_client.get_blob_client(container=OUTPUT_CONTAINER, blob=CACHE_BLOB)
+        
+        if not blob_client.exists():
+            return func.HttpResponse(json.dumps({"error": "No data available."}), status_code=404, mimetype="application/json")
+
+        cache_content = blob_client.download_blob().readall()
+        cache_data = json.loads(cache_content)
+        averages = cache_data['analysis']['averages_by_diet']
+        
+        clusters = {
+            "High Protein / Low Carb": [],
+            "High Carb / Low Fat": [],
+            "Balanced / Moderate": [],
+            "Other Profiles": []
+        }
+        
+        for diet, stats in averages.items():
+            protein = stats.get('Protein(g)', 0)
+            carbs = stats.get('Carbs(g)', 0)
+            fat = stats.get('Fat(g)', 0)
+            
+            if protein > 90 and carbs < 80:
+                clusters["High Protein / Low Carb"].append(diet)
+            elif carbs > 180 and fat < 110:
+                clusters["High Carb / Low Fat"].append(diet)
+            elif 70 < protein < 110 and 120 < carbs < 170:
+                clusters["Balanced / Moderate"].append(diet)
+            else:
+                clusters["Other Profiles"].append(diet)
+                
+        return func.HttpResponse(json.dumps({"clusters": clusters}), mimetype="application/json")
 
     except Exception as e:
         return func.HttpResponse(json.dumps({"error": str(e)}), status_code=500, mimetype="application/json")
